@@ -1,6 +1,6 @@
-# Nano 33 IoT – SK9822 LED Controller (FastLED + BLE + WiFi)
+# Nano 33 IoT – SK6812 RGBW LED Controller (FastLED + BLE + WiFi)
 
-Control up to 100 SK9822 RGB LEDs from any phone browser.  
+Control up to 100 SK6812 RGBW LEDs from any phone browser.  
 BLE acts as the on/off switch for WiFi: the web UI is only reachable while a phone is connected over Bluetooth.
 
 ---
@@ -9,25 +9,24 @@ BLE acts as the on/off switch for WiFi: the web UI is only reachable while a pho
 
 | Feature | Detail |
 |---|---|
-| **White mode** | Single slider drives R = G = B (warm-white effect) |
-| **Colour mode** | Individual R / G / B sliders |
-| **Brightness** | Global FastLED brightness, independent of colour |
+| **White mode** | Drives the SK6812 **dedicated W LED** only (RGB off) – the truest white |
+| **Colour mode** | Individual R / G / B sliders (W LED off) |
+| **Brightness** | Global FastLED brightness, scales all four channels uniformly |
 | **Power saving** | WiFi starts only when a BLE device connects; stops on disconnect |
 
 ---
 
 ## Hardware
 
-| SK9822 pin | Nano 33 IoT pin |
+| SK6812 pin | Nano 33 IoT pin |
 |---|---|
-| DATA | D11 (MOSI / SPI) |
-| CLOCK | D13 (SCK / SPI) |
+| DIN (data in) | D6 (single data wire — no clock needed) |
 | VCC | External 5 V supply (use a dedicated PSU for ≥ 20 LEDs) |
 | GND | GND (common with Nano GND) |
 
-> **Note** The Nano 33 IoT's NINA-W102 module uses an *internal* SPI bus, not the header pins, so there is no conflict with FastLED's SPI usage on D11/D13.
+> **SK6812 RGBW** Each package contains three RGB LEDs **plus** a fourth warm-white LED driven by the W byte.  White mode here uses only the W channel for the most natural and efficient white light output.
 
-> **RGBW note** SK9822 LEDs are RGB + a 5-bit per-LED global brightness channel. They are not natively 4-channel RGBW. "White" here means driving R, G, B equally. If you have a strip with a true dedicated white LED, you will need additional driver circuitry and custom code beyond FastLED.
+> **FastLED CRGBW cast trick** FastLED has no native 4-channel `addLeds<>` for SK6812 RGBW.  The sketch uses a `CRGBW[]` array cast to `CRGB*` with a byte-count calculated by `getRGBWsize()`, so FastLED sends exactly `NUM_LEDS × 4` bytes in the correct GRBW wire order.
 
 ---
 

@@ -6,13 +6,20 @@
 #define WIFI_PASSWORD "your_wifi_password"
 
 // ─── LED Configuration ─────────────────────────────────────
-// SK9822 uses hardware SPI: DATA → pin 11 (MOSI), CLOCK → pin 13 (SCK)
-// Nano 33 IoT's NINA module uses a separate internal SPI bus → no conflict.
+// SK6812 RGBW uses a single data wire (no clock).
+// Connect: SK6812 DIN → pin 6, VCC → 5 V supply, GND → common GND.
+//
+// FastLED does not natively support 4-channel RGBW in addLeds<>, so we use
+// the CRGBW-cast trick: a CRGBW[] array is reinterpreted as CRGB* and passed
+// with getRGBWsize() as the LED count so that FastLED sends exactly
+// NUM_LEDS * 4 raw bytes (= the GRBW stream the strip expects).
+// COLOR_ORDER must be RGB so FastLED sends bytes in their memory order without
+// reordering — the G↔R channel swap required by SK6812 wire format is handled
+// explicitly inside applyLeds().
 #define NUM_LEDS      100
-#define LED_DATA_PIN  11    // MOSI
-#define LED_CLOCK_PIN 13    // SCK
-#define LED_TYPE      SK9822
-#define COLOR_ORDER   BGR   // SK9822 wire order is BGR
+#define LED_DATA_PIN  6
+#define LED_TYPE      SK6812
+#define COLOR_ORDER   RGB
 
 // ─── BLE ───────────────────────────────────────────────────
 #define BLE_DEVICE_NAME  "NanoLED"
