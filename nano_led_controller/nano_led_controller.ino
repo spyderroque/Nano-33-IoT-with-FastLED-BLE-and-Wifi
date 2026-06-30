@@ -80,16 +80,24 @@ void applyLeds() {
 // ─── HTTP helpers ──────────────────────────────────────────
 
 static int parseParam(const String &req, const char *key) {
-    String k = String(key) + "=";
-    int i = req.indexOf(k);
-    if (i < 0) return -1;
-    i += k.length();
-    int j = i;
-    while (j < (int)req.length() && req[j] != '&' && req[j] != ' ' && req[j] != '\r') {
-        j++;
+    // Require '?' or '&' before the key to avoid partial matches (e.g. "r=" inside "br=").
+    String needle = String(key) + '=';
+    int pos = 0;
+    while (pos < (int)req.length()) {
+        int found = req.indexOf(needle, pos);
+        if (found < 0) break;
+        if (found > 0 && (req[found - 1] == '?' || req[found - 1] == '&')) {
+            int i = found + needle.length();
+            int j = i;
+            while (j < (int)req.length() && req[j] != '&' && req[j] != ' ' && req[j] != '\r') {
+                j++;
+            }
+            if (j > i) return req.substring(i, j).toInt();
+            return -1;
+        }
+        pos = found + 1;
     }
-    if (j == i) return -1;
-    return req.substring(i, j).toInt();
+    return -1;
 }
 
 static void sendJson(WiFiClient &client) {

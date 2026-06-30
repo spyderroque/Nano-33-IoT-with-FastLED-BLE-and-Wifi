@@ -21,8 +21,9 @@
 
 // ─── BLE ───────────────────────────────────────────────────
 #define BLE_DEVICE_NAME  "NanoLED"
-// Generic Access Profile service UUID (16-bit 0x1800 expanded to 128-bit)
-#define BLE_SERVICE_UUID "00001800-0000-1000-8000-00805f9b34fb"
+// Custom 128-bit service UUID (not a SIG-reserved UUID; avoids conflicts with
+// ArduinoBLE's internally managed Generic Access Profile service 0x1800).
+#define BLE_SERVICE_UUID "7ea7b78c-de64-4f0c-bdd9-20d9bd3289da"
 
 // ─── Web Server ────────────────────────────────────────────
 #define WEB_SERVER_PORT 80
