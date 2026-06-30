@@ -26,7 +26,7 @@ BLE acts as the on/off switch for WiFi: the web UI is only reachable while a pho
 
 > **SK6812 RGBW** Each package contains three RGB LEDs **plus** a fourth warm-white LED driven by the W byte.  White mode here uses only the W channel for the most natural and efficient white light output.
 
-> **FastLED CRGBW cast trick** FastLED has no native 4-channel `addLeds<>` for SK6812 RGBW.  The sketch uses a `CRGBW[]` array cast to `CRGB*` with a byte-count calculated by `getRGBWsize()`, so FastLED sends exactly `NUM_LEDS × 4` bytes in the correct GRBW wire order.
+> **FastLED RGBW** FastLED ≥ 3.7.7 supports SK6812 RGBW natively.  The sketch uses a standard `CRGB` array and calls `.setRgbw(Rgbw(kRGBWDefaultColorTemp, kRGBWExactColors, W3))` on `addLeds<>`.  FastLED's `RGBWEmulatedController` handles packing the 4th W byte automatically — no cast tricks or manual channel swapping needed.  `kRGBWExactColors` transfers `min(R,G,B)` to the W channel so neutral/white tones drive the physical white LED instead of the RGB mix.
 
 ---
 

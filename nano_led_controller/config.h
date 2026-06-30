@@ -9,17 +9,15 @@
 // SK6812 RGBW uses a single data wire (no clock).
 // Connect: SK6812 DIN → pin 6, VCC → 5 V supply, GND → common GND.
 //
-// FastLED does not natively support 4-channel RGBW in addLeds<>, so we use
-// the CRGBW-cast trick: a CRGBW[] array is reinterpreted as CRGB* and passed
-// with getRGBWsize() as the LED count so that FastLED sends exactly
-// NUM_LEDS * 4 raw bytes (= the GRBW stream the strip expects).
-// COLOR_ORDER must be RGB so FastLED sends bytes in their memory order without
-// reordering — the G↔R channel swap required by SK6812 wire format is handled
-// explicitly inside applyLeds().
+// FastLED ≥ 3.7.7 has native RGBW support via setRgbw().
+// The sketch uses a standard CRGB array; FastLED's RGBWEmulatedController
+// (configured via setRgbw) handles packing the 4th W byte transparently.
+// COLOR_ORDER = GRB matches SK6812 GRBW wire format (G,R,B first three bytes).
+// W3 tells FastLED the white byte is the 4th (last) byte per pixel.
 #define NUM_LEDS      100
 #define LED_DATA_PIN  6
 #define LED_TYPE      SK6812
-#define COLOR_ORDER   RGB
+#define COLOR_ORDER   GRB
 
 // ─── BLE ───────────────────────────────────────────────────
 #define BLE_DEVICE_NAME  "NanoLED"

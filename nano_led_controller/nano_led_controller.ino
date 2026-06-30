@@ -6,10 +6,12 @@
  *   • When a mobile device connects over BLE, the NINA module also connects
  *     to WiFi and starts a web server on port 80.
  *   • The web UI offers two modes:
- *       White – drives the dedicated SK6812 W LED at the chosen intensity
- *               (RGB channels off); this gives the truest white light.
- *       Color – drives R, G, B channels at chosen values (W channel off).
- *     Both modes share a global Brightness slider.
+ *       White – sets R=G=B=w (slider value); FastLED's kRGBWExactColors
+ *               conversion extracts the common component into the W channel,
+ *               driving the physical white LED with no RGB contribution.
+ *       Color – drives R, G, B at chosen values; near-neutral mixes
+ *               automatically blend in W for better quality.
+ *     Both modes share a global Brightness slider (FastLED.setBrightness).
  *   • When the BLE device disconnects, WiFi is stopped to save power.
  *
  * Wiring:
@@ -17,23 +19,18 @@
  *   SK6812 VCC  → 5 V dedicated supply (not the Nano's 5 V pin for >20 LEDs)
  *   SK6812 GND  → GND (common with Nano GND)
  *
- * RGBW / FastLED notes:
- *   FastLED does not have a native 4-channel RGBW addLeds<> variant for
- *   SK6812.  We use the CRGBW-cast workaround:
- *     - Declare CRGBW leds[NUM_LEDS].
- *     - Reinterpret as CRGB* and pass getRGBWsize(NUM_LEDS) as the count,
- *       so FastLED sends exactly NUM_LEDS * 4 bytes to the strip.
- *     - Use COLOR_ORDER = RGB so the byte stream is not reordered by FastLED
- *       (reordering would break the 4-byte-per-pixel alignment).
- *     - SK6812 RGBW wire order is G, R, B, W.  CRGBW memory order is
- *       {r, g, b, w}.  The applyLeds() function accounts for this by storing
- *       the user's G value in leds[i].r and R value in leds[i].g.
- *   FastLED.setBrightness() scales all bytes uniformly, which is correct.
- *   FastLED.setCorrection(UncorrectedColor) disables colour-temperature
- *   correction that would otherwise distort the W channel.
+ * FastLED RGBW:
+ *   FastLED ≥ 3.7.7 supports SK6812 RGBW natively via setRgbw().
+ *   A standard CRGB array is used; an RGBWEmulatedController (configured
+ *   by setRgbw) handles packing the 4th W byte automatically.
+ *     - kRGBWExactColors: min(R,G,B) is transferred to W; RGB is reduced
+ *       by the same amount.  Gray/white tones drive the W LED cleanly.
+ *     - W3: the W byte is the 4th byte per pixel (SK6812 GRBW wire order).
+ *     - kRGBWDefaultColorTemp (6000 K): colour temperature used when
+ *       computing how much of a colour to assign to the white channel.
  *
  * Required libraries (install via Arduino Library Manager):
- *   • FastLED    ≥ 3.6
+ *   • FastLED    ≥ 3.7.7  (native RGBW support)
  *   • ArduinoBLE ≥ 1.3
  *   • WiFiNINA   ≥ 1.8
  */
@@ -46,22 +43,14 @@
 #include "web_ui.h"
 
 // ─── LED setup ─────────────────────────────────────────────
-// CRGBW-cast trick: 4-byte per LED, reinterpreted as CRGB* for FastLED.
-CRGBW leds[NUM_LEDS];
-CRGB *ledsRGB = (CRGB *)&leds[0];
-
-// FastLED needs to know how many 3-byte CRGB elements cover NUM_LEDS * 4 bytes.
-static uint16_t getRGBWsize(uint16_t n) {
-    uint32_t nb = (uint32_t)n * 4;
-    return (uint16_t)((nb % 3 == 0) ? nb / 3 : nb / 3 + 1);
-}
+CRGB leds[NUM_LEDS];
 
 // ─── LED state ─────────────────────────────────────────────
 struct State {
   uint8_t r          = 255;
   uint8_t g          = 255;
   uint8_t b          = 255;
-  uint8_t w          = 255;   // white channel intensity (SK6812 W LED)
+  uint8_t w          = 255;   // white intensity (0–255)
   uint8_t brightness = 128;
   bool    whiteOnly  = true;
 } state;
@@ -74,32 +63,16 @@ bool wifiActive = false;
 BLEService ledService(BLE_SERVICE_UUID);
 
 // ─── LED helpers ───────────────────────────────────────────
-
-// Set all LEDs to the given RGBW values.
-// SK6812 wire order is G, R, B, W but CRGBW memory is {r, g, b, w}.
-// With FastLED RGB byte order the stream is sent as-is, so:
-//   leds[i].r byte → SK6812 G channel
-//   leds[i].g byte → SK6812 R channel
-//   leds[i].b byte → SK6812 B channel
-//   leds[i].w byte → SK6812 W channel
-// Swap R↔G when storing to compensate.
-static void fillLeds(uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
-    for (uint16_t i = 0; i < NUM_LEDS; i++) {
-        leds[i].r = g;   // → SK6812 G
-        leds[i].g = r;   // → SK6812 R
-        leds[i].b = b;   // → SK6812 B
-        leds[i].w = w;   // → SK6812 W
-    }
-}
-
 void applyLeds() {
+    CRGB color;
     if (state.whiteOnly) {
-        // Drive the physical white LED only; RGB channels off.
-        fillLeds(0, 0, 0, state.w);
+        // Equal R=G=B causes kRGBWExactColors to push the full value into the
+        // W channel (min(w,w,w) = w → W LED = w, RGB = 0).
+        color = CRGB(state.w, state.w, state.w);
     } else {
-        // Colour mode: use RGB channels; W channel off.
-        fillLeds(state.r, state.g, state.b, 0);
+        color = CRGB(state.r, state.g, state.b);
     }
+    fill_solid(leds, NUM_LEDS, color);
     FastLED.setBrightness(state.brightness);
     FastLED.show();
 }
@@ -205,10 +178,15 @@ void stopWifi() {
 void setup() {
     Serial.begin(115200);
 
-    FastLED.addLeds<LED_TYPE, LED_DATA_PIN, COLOR_ORDER>(ledsRGB, getRGBWsize(NUM_LEDS));
-    FastLED.setCorrection(UncorrectedColor);  // no per-channel skew; W scales cleanly
+    // Native RGBW support via setRgbw() – no cast tricks needed.
+    // kRGBWExactColors: transfers min(R,G,B) to the W channel so that
+    //   neutral/white tones drive the physical W LED, not the RGB mix.
+    // W3: W byte is 4th in the GRBW stream (SK6812 wire order).
+    FastLED.addLeds<LED_TYPE, LED_DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS)
+           .setRgbw(Rgbw(kRGBWDefaultColorTemp, kRGBWExactColors, W3));
+
     FastLED.setBrightness(0);
-    fillLeds(0, 0, 0, 0);
+    FastLED.clear();
     FastLED.show();
 
     if (!BLE.begin()) {
