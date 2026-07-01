@@ -35,6 +35,14 @@ logic is unit-tested on the host, the rest is flashed to the board.
 
 ## Installation
 
+> ⚠️ **Simultaneous WiFi + BLE requires up-to-date firmware.** This project keeps
+> a BLE connection alive *while* serving the web UI over WiFi. On the NINA-W102
+> module that is only possible with **NINA firmware ≥ 3.0.1** together with
+> **WiFiNINA 2.0.0** and **ArduinoBLE 2.0.0** (both pinned in `platformio.ini`).
+> Update the module firmware once via the Arduino IDE (**Tools → Firmware
+> Updater**, or the standalone [`arduino-fwuploader`](https://github.com/arduino/arduino-fwuploader))
+> before flashing. With older firmware WiFi and BLE cannot run at the same time.
+
 ### 1. Install PlatformIO
 
 Choose one:
@@ -150,5 +158,9 @@ Declared in `platformio.ini` and fetched automatically:
 | Library | Constraint |
 |---|---|
 | FastLED | `^3.7.0` (native RGBW `setRgbw` support) |
-| ArduinoBLE | `^1.3.0` |
-| WiFiNINA | `^1.8.0` |
+| ArduinoBLE | `^2.0.0` (required for simultaneous WiFi + BLE) |
+| WiFiNINA | `^2.0.0` (required for simultaneous WiFi + BLE; adds `WiFiServer::end()`) |
+
+> Both `2.0.0` releases (March 2026) moved BLE onto the SPI bus so WiFi and BLE
+> can share the NINA radio. They require **NINA firmware ≥ 3.0.1** — see the
+> note at the top of [Installation](#installation).
