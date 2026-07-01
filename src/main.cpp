@@ -20,7 +20,7 @@
  *   SK6812 GND  → GND (common with Nano GND)
  *
  * FastLED RGBW:
- *   FastLED ≥ 3.7.7 supports SK6812 RGBW natively via setRgbw().
+ *   FastLED ≥ 3.7 supports SK6812 RGBW natively via setRgbw().
  *   A standard CRGB array is used; an RGBWEmulatedController (configured
  *   by setRgbw) handles packing the 4th W byte automatically.
  *     - kRGBWExactColors: min(R,G,B) is transferred to W; RGB is reduced
@@ -29,11 +29,14 @@
  *     - kRGBWDefaultColorTemp (6000 K): colour temperature used when
  *       computing how much of a colour to assign to the white channel.
  *
- * Required libraries (install via Arduino Library Manager):
- *   • FastLED    ≥ 3.7.7  (native RGBW support)
- *   • ArduinoBLE ≥ 1.3
- *   • WiFiNINA   ≥ 1.8
+ * Build system: PlatformIO (see platformio.ini).  Dependencies (FastLED,
+ * ArduinoBLE, WiFiNINA) are declared in lib_deps and fetched automatically.
+ *   pio run -e nano_33_iot -t upload   # build + flash
+ *   pio device monitor                 # serial monitor (115200 baud)
+ *   pio test -e native                 # run host unit tests
  */
+
+#include <Arduino.h>
 
 #include <FastLED.h>
 #include <ArduinoBLE.h>
@@ -41,6 +44,7 @@
 
 #include "config.h"
 #include "web_ui.h"
+#include "param_parser.h"   // pure query-string parser (unit-tested on host)
 
 // ─── LED setup ─────────────────────────────────────────────
 CRGB leds[NUM_LEDS];
@@ -78,27 +82,8 @@ void applyLeds() {
 }
 
 // ─── HTTP helpers ──────────────────────────────────────────
-
-static int parseParam(const String &req, const char *key) {
-    // Require '?' or '&' before the key to avoid partial matches (e.g. "r=" inside "br=").
-    String needle = String(key) + '=';
-    int pos = 0;
-    while (pos < (int)req.length()) {
-        int found = req.indexOf(needle, pos);
-        if (found < 0) break;
-        if (found > 0 && (req[found - 1] == '?' || req[found - 1] == '&')) {
-            int i = found + needle.length();
-            int j = i;
-            while (j < (int)req.length() && req[j] != '&' && req[j] != ' ' && req[j] != '\r') {
-                j++;
-            }
-            if (j > i) return req.substring(i, j).toInt();
-            return -1;
-        }
-        pos = found + 1;
-    }
-    return -1;
-}
+// parseParam() lives in lib/ParamParser so it can be unit-tested on the host
+// without any Arduino dependency (see test/test_param_parser).
 
 static void sendJson(WiFiClient &client) {
     client.print(F("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n"));
@@ -137,12 +122,13 @@ void handleClient() {
         if      (req.indexOf("mode=white") >= 0) state.whiteOnly = true;
         else if (req.indexOf("mode=color") >= 0) state.whiteOnly = false;
 
+        const char *r = req.c_str();
         int v;
-        if ((v = parseParam(req, "w"))  >= 0) state.w          = (uint8_t)constrain(v, 0, 255);
-        if ((v = parseParam(req, "r"))  >= 0) state.r          = (uint8_t)constrain(v, 0, 255);
-        if ((v = parseParam(req, "g"))  >= 0) state.g          = (uint8_t)constrain(v, 0, 255);
-        if ((v = parseParam(req, "bl")) >= 0) state.b          = (uint8_t)constrain(v, 0, 255);
-        if ((v = parseParam(req, "br")) >= 0) state.brightness = (uint8_t)constrain(v, 0, 255);
+        if ((v = parseParam(r, "w"))  >= 0) state.w          = (uint8_t)constrain(v, 0, 255);
+        if ((v = parseParam(r, "r"))  >= 0) state.r          = (uint8_t)constrain(v, 0, 255);
+        if ((v = parseParam(r, "g"))  >= 0) state.g          = (uint8_t)constrain(v, 0, 255);
+        if ((v = parseParam(r, "bl")) >= 0) state.b          = (uint8_t)constrain(v, 0, 255);
+        if ((v = parseParam(r, "br")) >= 0) state.brightness = (uint8_t)constrain(v, 0, 255);
 
         applyLeds();
         sendJson(client);
