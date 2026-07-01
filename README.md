@@ -158,9 +158,13 @@ Declared in `platformio.ini` and fetched automatically:
 | Library | Constraint |
 |---|---|
 | FastLED | `^3.7.0` (native RGBW `setRgbw` support) |
-| ArduinoBLE | `^2.0.0` (required for simultaneous WiFi + BLE) |
-| WiFiNINA | `^2.0.0` (required for simultaneous WiFi + BLE; adds `WiFiServer::end()`) |
+| ArduinoBLE | `^2.1.0` (required for simultaneous WiFi + BLE) |
+| WiFiNINA | `^2.1.0` (required for simultaneous WiFi + BLE; adds `WiFiServer::end()`) |
 
-> Both `2.0.0` releases (March 2026) moved BLE onto the SPI bus so WiFi and BLE
-> can share the NINA radio. They require **NINA firmware ≥ 3.0.1** — see the
-> note at the top of [Installation](#installation).
+The `^` (caret) means "latest release below the next major", so each library
+auto-updates within its major line — e.g. `^2.1.0` resolves to the newest 2.x
+(currently 2.1.0) but never to a potentially breaking 3.0.0.
+
+> Simultaneous WiFi + BLE landed in the `2.0.0` releases (March 2026), which
+> moved BLE onto the SPI bus so both can share the NINA radio. They require
+> **NINA firmware ≥ 3.0.1** — see the note at the top of [Installation](#installation).
