@@ -1,0 +1,10 @@
+# PlatformIO build output and metadata
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
