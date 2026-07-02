@@ -4,10 +4,14 @@
  * Behaviour:
  *   • Advertises via BLE (name: NanoLED).
  *   • When a mobile device connects over BLE, the NINA module also connects
- *     to WiFi and starts a web server on port 80. WiFi stays on for
- *     WIFI_ON_SECONDS (default 5 min), then switches off automatically to save
- *     power even if BLE remains connected — reconnect BLE for a fresh window.
- *     The web UI shows a live mm:ss countdown to this shutdown.
+ *     to WiFi and starts a web server on port 80. WiFi then stays on for
+ *     WIFI_ON_SECONDS (default 5 min) and is governed ONLY by that countdown:
+ *     it keeps serving for the full window even if BLE drops in the meantime,
+ *     and switches off automatically when the countdown ends. Reconnecting BLE
+ *     starts a fresh window. The web UI shows a live mm:ss countdown.
+ *   • On connect the board's URL ("http://<ip>") is written to a read/notify
+ *     BLE characteristic, so the phone can obtain the address (and open the
+ *     page) without reading it from the Serial Monitor.
  *   • The web UI offers two modes:
  *       White – sets R=G=B=w (slider value); FastLED's kRGBWExactColors
  *               conversion extracts the common component into the W channel,
@@ -15,8 +19,8 @@
  *       Color – drives R, G, B at chosen values; near-neutral mixes
  *               automatically blend in W for better quality.
  *     Both modes share a global Brightness slider (FastLED.setBrightness).
- *   • When the BLE device disconnects (or the on-time elapses), WiFi is
- *     stopped to save power.
+ *   • WiFi is stopped (to save power) only when the on-time countdown elapses.
+ *     A BLE disconnect on its own no longer stops WiFi.
  *
  * Wiring:
  *   SK6812 DIN  → pin 6 (single data wire, no clock)
@@ -70,6 +74,10 @@ unsigned long wifiDeadline = 0;   // millis() timestamp when WiFi auto-stops
 
 // ─── BLE ───────────────────────────────────────────────────
 BLEService ledService(BLE_SERVICE_UUID);
+// Read + notify characteristic holding the web UI URL ("http://<ip>"), pushed
+// to the phone when WiFi comes up so it can open the page without the serial log.
+BLEStringCharacteristic ipCharacteristic(BLE_IP_CHAR_UUID, BLERead | BLENotify, 32);
+bool bleWasConnected = false;     // for BLE connect/disconnect edge detection
 
 // ─── LED helpers ───────────────────────────────────────────
 void applyLeds() {
@@ -170,12 +178,15 @@ void startWifi() {
         Serial.print('.');
     }
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.print(F("\nConnected. Open http://"));
-        Serial.println(WiFi.localIP());
+        String url = String("http://") + WiFi.localIP().toString();
+        Serial.print(F("\nConnected. Open "));
+        Serial.println(url);
+        ipCharacteristic.writeValue(url);   // push URL to any subscribed central
         server.begin();
         wifiActive = true;
     } else {
         Serial.println(F("\nWiFi failed – web UI unavailable."));
+        ipCharacteristic.writeValue("off");
     }
 }
 
@@ -184,6 +195,7 @@ void stopWifi() {
     server.end();
     WiFi.disconnect();
     wifiActive = false;
+    ipCharacteristic.writeValue("off");
     Serial.println(F("WiFi stopped."));
 }
 
@@ -207,37 +219,46 @@ void setup() {
         while (true) {}
     }
     BLE.setLocalName(BLE_DEVICE_NAME);
+    ledService.addCharacteristic(ipCharacteristic);
     BLE.setAdvertisedService(ledService);
     BLE.addService(ledService);
+    ipCharacteristic.writeValue("off");   // no URL until WiFi comes up
     BLE.advertise();
     Serial.println(F("BLE advertising as \"" BLE_DEVICE_NAME "\""));
     Serial.println(F("Connect a phone over BLE to activate the web UI."));
 }
 
 void loop() {
+    // Service the BLE stack and read the current connection state.
+    BLE.poll();
     BLEDevice central = BLE.central();
-    if (!central) return;
+    bool bleConnected = central && central.connected();
 
-    Serial.print(F("BLE connected: "));
-    Serial.println(central.address());
-    startWifi();
-    wifiDeadline = millis() + (unsigned long)WIFI_ON_SECONDS * 1000UL;
-
-    while (central.connected()) {
-        BLE.poll();
+    // Rising edge: a phone just connected → start the WiFi window (or, if WiFi
+    // is already up, refresh it to a fresh WIFI_ON_SECONDS).
+    if (bleConnected && !bleWasConnected) {
+        Serial.print(F("BLE connected: "));
+        Serial.println(central.address());
+        if (!wifiActive) startWifi();
         if (wifiActive) {
-            if ((long)(millis() - wifiDeadline) >= 0) {
-                // 5-minute window elapsed: power WiFi down but keep BLE up.
-                // Reconnecting BLE starts a fresh window.
-                Serial.println(F("WiFi on-time elapsed – stopping WiFi."));
-                stopWifi();
-            } else {
-                handleClient();
-            }
+            wifiDeadline = millis() + (unsigned long)WIFI_ON_SECONDS * 1000UL;
         }
     }
+    // Falling edge: the phone disconnected. WiFi deliberately keeps running for
+    // the rest of the countdown; just resume advertising for the next phone.
+    if (!bleConnected && bleWasConnected) {
+        Serial.println(F("BLE disconnected – WiFi stays up until the countdown ends."));
+        BLE.advertise();
+    }
+    bleWasConnected = bleConnected;
 
-    Serial.println(F("BLE disconnected."));
-    stopWifi();
-    BLE.advertise();
+    // WiFi lifetime is governed solely by the countdown, independent of BLE.
+    if (wifiActive) {
+        if ((long)(millis() - wifiDeadline) >= 0) {
+            Serial.println(F("WiFi on-time elapsed – stopping WiFi."));
+            stopWifi();
+        } else {
+            handleClient();
+        }
+    }
 }

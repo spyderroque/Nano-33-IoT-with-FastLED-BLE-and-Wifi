@@ -24,6 +24,9 @@
 // Custom 128-bit service UUID (not a SIG-reserved UUID; avoids conflicts with
 // ArduinoBLE's internally managed Generic Access Profile service 0x1800).
 #define BLE_SERVICE_UUID "7ea7b78c-de64-4f0c-bdd9-20d9bd3289da"
+// Characteristic (read + notify) that exposes the web UI URL "http://<ip>" to
+// the connected phone, so the address need not be read from the Serial Monitor.
+#define BLE_IP_CHAR_UUID "7ea7b78d-de64-4f0c-bdd9-20d9bd3289da"
 
 // ─── Web Server ────────────────────────────────────────────
 #define WEB_SERVER_PORT 80

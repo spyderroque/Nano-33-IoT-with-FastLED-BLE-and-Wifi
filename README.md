@@ -3,7 +3,9 @@
 Control up to 100 SK6812 RGBW LEDs from any phone browser.  
 BLE acts as the on switch for WiFi: connecting a phone over Bluetooth brings the
 web UI up for **5 minutes**, then WiFi switches off again to save power. The UI
-shows a live **mm:ss countdown** to that shutdown.
+shows a live **mm:ss countdown** to that shutdown. WiFi keeps serving for the
+whole window even if Bluetooth drops, and the board's `http://<ip>` URL is
+pushed to the phone over a BLE characteristic — no Serial Monitor needed.
 
 Built with **[PlatformIO](https://platformio.org/)** — the pure request-parsing
 logic is unit-tested on the host, the rest is flashed to the board.
@@ -17,8 +19,9 @@ logic is unit-tested on the host, the rest is flashed to the board.
 | **White mode** | Drives the SK6812 **dedicated W LED** only (RGB off) – the truest white |
 | **Colour mode** | Individual R / G / B sliders (W LED off) |
 | **Brightness** | Global FastLED brightness, scales all four channels uniformly |
-| **Power saving** | WiFi starts on BLE connect and auto-stops after `WIFI_ON_SECONDS` (default 5 min) or on BLE disconnect |
+| **Power saving** | WiFi starts on BLE connect and auto-stops **only** when the `WIFI_ON_SECONDS` countdown ends (default 5 min); a BLE disconnect no longer stops it |
 | **Countdown** | Web UI shows a live mm:ss countdown to the WiFi shutdown |
+| **IP over BLE** | The web URL `http://<ip>` is pushed to a read/notify BLE characteristic, so the phone gets the address directly |
 
 ---
 
@@ -109,16 +112,25 @@ once a phone connects, the board's IP address.
 
 ## Usage
 
-1. Flash the sketch (see above) and open the Serial Monitor.
-2. On your phone, connect to the Bluetooth device **NanoLED**.  
-   *(No pairing PIN needed – the BLE service carries no characteristics; the connection itself is the trigger.)*
-3. The Serial Monitor prints the board's IP address, e.g. `http://192.168.1.42`.
+1. Flash the sketch (see above).
+2. On your phone, connect to the Bluetooth device **NanoLED** — e.g. with a
+   generic BLE app (nRF Connect / LightBlue) or your own app. The connection
+   itself is the trigger; no pairing PIN is required.
+3. Read the board's URL over BLE: the **IP characteristic** (read + notify,
+   UUID `…b78d…`) holds `http://<ip>` and is pushed the moment WiFi connects.
+   The URL is also printed to the Serial Monitor, e.g. `http://192.168.1.42`.
 4. Open that address in your phone browser.
 5. Use the **White** / **Color** toggle and sliders. Changes take effect in real time.
 6. The badge at the top counts down **mm:ss** until WiFi shuts off (5 min after
-   connecting). When it reaches `00:00` the web UI goes offline — reconnect
-   Bluetooth to start a fresh 5-minute window.
-7. Disconnecting Bluetooth also stops WiFi immediately to save power.
+   connecting). WiFi keeps serving for the whole window **even if you disconnect
+   Bluetooth**. When the countdown reaches `00:00` the web UI goes offline —
+   reconnect Bluetooth to start a fresh 5-minute window.
+
+> **Opening the page directly.** A generic BLE app displays the `http://<ip>`
+> value so you can tap/copy it. For true one-tap open, a small companion app or
+> a [Web Bluetooth](https://developer.mozilla.org/docs/Web/API/Web_Bluetooth_API)
+> page (Chrome on Android) can read the characteristic and follow the link — the
+> device-side prerequisite (the characteristic) is already in place.
 
 ---
 
