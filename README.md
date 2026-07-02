@@ -1,7 +1,9 @@
 # Nano 33 IoT – SK6812 RGBW LED Controller (FastLED + BLE + WiFi)
 
 Control up to 100 SK6812 RGBW LEDs from any phone browser.  
-BLE acts as the on/off switch for WiFi: the web UI is only reachable while a phone is connected over Bluetooth.
+BLE acts as the on switch for WiFi: connecting a phone over Bluetooth brings the
+web UI up for **5 minutes**, then WiFi switches off again to save power. The UI
+shows a live **mm:ss countdown** to that shutdown.
 
 Built with **[PlatformIO](https://platformio.org/)** — the pure request-parsing
 logic is unit-tested on the host, the rest is flashed to the board.
@@ -15,7 +17,8 @@ logic is unit-tested on the host, the rest is flashed to the board.
 | **White mode** | Drives the SK6812 **dedicated W LED** only (RGB off) – the truest white |
 | **Colour mode** | Individual R / G / B sliders (W LED off) |
 | **Brightness** | Global FastLED brightness, scales all four channels uniformly |
-| **Power saving** | WiFi starts only when a BLE device connects; stops on disconnect |
+| **Power saving** | WiFi starts on BLE connect and auto-stops after `WIFI_ON_SECONDS` (default 5 min) or on BLE disconnect |
+| **Countdown** | Web UI shows a live mm:ss countdown to the WiFi shutdown |
 
 ---
 
@@ -75,10 +78,11 @@ Edit `src/config.h`:
 #define WIFI_PASSWORD "your_wifi_password"
 ```
 
-Adjust the LED count if needed (default 100):
+Adjust the LED count or the WiFi on-time if needed (defaults 100 LEDs / 5 min):
 
 ```cpp
-#define NUM_LEDS 100
+#define NUM_LEDS        100
+#define WIFI_ON_SECONDS 300   // how long WiFi stays up after a BLE connection
 ```
 
 ### 4. Build and upload
@@ -111,7 +115,10 @@ once a phone connects, the board's IP address.
 3. The Serial Monitor prints the board's IP address, e.g. `http://192.168.1.42`.
 4. Open that address in your phone browser.
 5. Use the **White** / **Color** toggle and sliders. Changes take effect in real time.
-6. Disconnect Bluetooth → WiFi stops automatically to save power.
+6. The badge at the top counts down **mm:ss** until WiFi shuts off (5 min after
+   connecting). When it reaches `00:00` the web UI goes offline — reconnect
+   Bluetooth to start a fresh 5-minute window.
+7. Disconnecting Bluetooth also stops WiFi immediately to save power.
 
 ---
 

@@ -4,7 +4,10 @@
  * Behaviour:
  *   • Advertises via BLE (name: NanoLED).
  *   • When a mobile device connects over BLE, the NINA module also connects
- *     to WiFi and starts a web server on port 80.
+ *     to WiFi and starts a web server on port 80. WiFi stays on for
+ *     WIFI_ON_SECONDS (default 5 min), then switches off automatically to save
+ *     power even if BLE remains connected — reconnect BLE for a fresh window.
+ *     The web UI shows a live mm:ss countdown to this shutdown.
  *   • The web UI offers two modes:
  *       White – sets R=G=B=w (slider value); FastLED's kRGBWExactColors
  *               conversion extracts the common component into the W channel,
@@ -12,7 +15,8 @@
  *       Color – drives R, G, B at chosen values; near-neutral mixes
  *               automatically blend in W for better quality.
  *     Both modes share a global Brightness slider (FastLED.setBrightness).
- *   • When the BLE device disconnects, WiFi is stopped to save power.
+ *   • When the BLE device disconnects (or the on-time elapses), WiFi is
+ *     stopped to save power.
  *
  * Wiring:
  *   SK6812 DIN  → pin 6 (single data wire, no clock)
@@ -62,6 +66,7 @@ struct State {
 // ─── WiFi / server ─────────────────────────────────────────
 WiFiServer server(WEB_SERVER_PORT);
 bool wifiActive = false;
+unsigned long wifiDeadline = 0;   // millis() timestamp when WiFi auto-stops
 
 // ─── BLE ───────────────────────────────────────────────────
 BLEService ledService(BLE_SERVICE_UUID);
@@ -85,6 +90,15 @@ void applyLeds() {
 // parseParam() lives in lib/ParamParser so it can be unit-tested on the host
 // without any Arduino dependency (see test/test_param_parser).
 
+// Whole seconds remaining before WiFi auto-stops (0 if already off/expired).
+// Uses signed arithmetic on the millis() difference so it is wrap-around safe.
+static uint16_t wifiRemainingSecs() {
+    if (!wifiActive) return 0;
+    long remMs = (long)(wifiDeadline - millis());
+    if (remMs <= 0) return 0;
+    return (uint16_t)((remMs + 999) / 1000);   // round up to whole seconds
+}
+
 static void sendJson(WiFiClient &client) {
     client.print(F("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n"));
     client.print(F("{\"mode\":\""));
@@ -94,6 +108,7 @@ static void sendJson(WiFiClient &client) {
     client.print(F(",\"g\":"));     client.print(state.g);
     client.print(F(",\"b\":"));     client.print(state.b);
     client.print(F(",\"br\":"));    client.print(state.brightness);
+    client.print(F(",\"secs\":"));  client.print(wifiRemainingSecs());
     client.print(F("}"));
 }
 
@@ -131,6 +146,10 @@ void handleClient() {
         if ((v = parseParam(r, "br")) >= 0) state.brightness = (uint8_t)constrain(v, 0, 255);
 
         applyLeds();
+        sendJson(client);
+
+    } else if (req.startsWith("GET /status")) {
+        // Lightweight poll: current state + countdown, no LED refresh.
         sendJson(client);
 
     } else if (req.startsWith("GET /")) {
@@ -202,10 +221,20 @@ void loop() {
     Serial.print(F("BLE connected: "));
     Serial.println(central.address());
     startWifi();
+    wifiDeadline = millis() + (unsigned long)WIFI_ON_SECONDS * 1000UL;
 
     while (central.connected()) {
         BLE.poll();
-        if (wifiActive) handleClient();
+        if (wifiActive) {
+            if ((long)(millis() - wifiDeadline) >= 0) {
+                // 5-minute window elapsed: power WiFi down but keep BLE up.
+                // Reconnecting BLE starts a fresh window.
+                Serial.println(F("WiFi on-time elapsed – stopping WiFi."));
+                stopWifi();
+            } else {
+                handleClient();
+            }
+        }
     }
 
     Serial.println(F("BLE disconnected."));

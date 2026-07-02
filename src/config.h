@@ -27,3 +27,10 @@
 
 // ─── Web Server ────────────────────────────────────────────
 #define WEB_SERVER_PORT 80
+
+// ─── WiFi on-time ──────────────────────────────────────────
+// After a BLE device connects, WiFi (and the web UI) stay on for this many
+// seconds, then switch off automatically to save power — even if BLE stays
+// connected. Reconnect BLE to start a new window. The web UI shows a live
+// mm:ss countdown to this shutdown.
+#define WIFI_ON_SECONDS 300   // 5 minutes
