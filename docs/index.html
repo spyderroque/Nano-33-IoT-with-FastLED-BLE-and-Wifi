@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NanoLED — Connect</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       background:radial-gradient(120% 120% at 50% 0%,#1b1b22 0%,#111 60%);
+       color:#eee;min-height:100vh;display:flex;align-items:center;
+       justify-content:center;padding:20px}
+  main{width:100%;max-width:420px;background:#17171c;border:1px solid #26262e;
+       border-radius:18px;padding:26px 22px;text-align:center;
+       box-shadow:0 12px 40px rgba(0,0,0,.45)}
+  .dot{width:54px;height:54px;border-radius:50%;margin:0 auto 14px;
+       background:conic-gradient(#4af,#7d5cff,#ff5c8a,#4af);
+       box-shadow:0 0 22px rgba(74,170,255,.55)}
+  h1{font-size:1.35rem;margin-bottom:6px;letter-spacing:.2px}
+  #sub{color:#9a9aa6;font-size:.9rem;line-height:1.45;margin-bottom:22px}
+  #sub b{color:#cfcfe0}
+  button{width:100%;padding:15px;border:0;border-radius:12px;cursor:pointer;
+         font-size:1.02rem;font-weight:700;color:#0b0b0f;
+         background:linear-gradient(180deg,#63b6ff,#3a8bff);
+         transition:transform .06s ease,filter .15s ease}
+  button:active{transform:translateY(1px);filter:brightness(.95)}
+  button:disabled{opacity:.55;cursor:default}
+  #status{margin-top:16px;min-height:1.2em;font-size:.92rem;color:#c7c7d2}
+  a#link{display:none;margin-top:14px;padding:14px;border-radius:12px;
+         background:#22232b;border:1px solid #34343f;color:#7dc4ff;
+         font-weight:600;text-decoration:none;word-break:break-all}
+  a#link.show{display:block}
+  .hint{margin-top:18px;font-size:.78rem;color:#6f6f7b;line-height:1.5}
+  .spin{display:inline-block;width:14px;height:14px;margin-right:7px;
+        border:2px solid #3a8bff;border-top-color:transparent;border-radius:50%;
+        vertical-align:-2px;animation:s .7s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<main>
+  <div class="dot"></div>
+  <h1>NanoLED</h1>
+  <p id="sub">Tap connect and pick <b>NanoLED</b>. Once the board joins WiFi you'll
+     be taken straight to the LED control page.</p>
+  <button id="btn">Connect &amp; open</button>
+  <p id="status"></p>
+  <a id="link" target="_self" rel="noopener"></a>
+  <p class="hint" id="hint"></p>
+</main>
+
+<script>
+// UUIDs must match src/config.h (BLE_SERVICE_UUID / BLE_IP_CHAR_UUID).
+var SERVICE_UUID = "7ea7b78c-de64-4f0c-bdd9-20d9bd3289da";
+var IP_CHAR_UUID = "7ea7b78d-de64-4f0c-bdd9-20d9bd3289da";
+
+var dec = new TextDecoder();
+var opened = false;
+function $(id){ return document.getElementById(id); }
+function status(t, spin){ $("status").innerHTML = (spin ? "<span class='spin'></span>" : "") + t; }
+
+function openUrl(url){
+  if (opened) return;
+  opened = true;
+  var a = $("link");
+  a.href = url;
+  a.textContent = "Open " + url;
+  a.className = "show";
+  status("WiFi ready — opening the LED page…", true);
+  setTimeout(function(){ window.location.href = url; }, 800);
+}
+
+function onValue(dv){
+  var s = dec.decode(dv).trim();
+  if (s.indexOf("http") === 0) openUrl(s);
+  return s;
+}
+
+async function connect(){
+  if (!navigator.bluetooth){
+    status("Web Bluetooth is not available in this browser.");
+    $("hint").textContent = "Use Chrome or Edge on Android or a desktop. iOS is not supported (the Bluefy app is a workaround).";
+    return;
+  }
+  $("btn").disabled = true;
+  try {
+    status("Choose your device…", true);
+    var dev = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }, { namePrefix: "NanoLED" }],
+      optionalServices: [SERVICE_UUID]
+    });
+
+    dev.addEventListener("gattserverdisconnected", function(){
+      if (!opened){ status("Disconnected. Tap connect to try again."); $("btn").disabled = false; }
+    });
+
+    status("Connecting…", true);
+    var server = await dev.gatt.connect();
+    var svc    = await server.getPrimaryService(SERVICE_UUID);
+    var ch     = await svc.getCharacteristic(IP_CHAR_UUID);
+
+    // The board pushes the URL via notify the moment WiFi comes up.
+    await ch.startNotifications();
+    ch.addEventListener("characteristicvaluechanged", function(e){ onValue(e.target.value); });
+
+    // Also check the value now, in case WiFi is already connected.
+    var cur = onValue(await ch.readValue());
+    if (opened) return;
+
+    status("Connected — waiting for the board to join WiFi…", true);
+    setTimeout(function(){
+      if (!opened){
+        status("Still waiting for WiFi. Check the board's WiFi credentials/signal, then retry.");
+        $("btn").disabled = false;
+      }
+    }, 45000);
+  } catch (err) {
+    status("Error: " + (err && err.message ? err.message : err));
+    $("btn").disabled = false;
+  }
+}
+
+$("btn").addEventListener("click", connect);
+
+if (!window.isSecureContext){
+  $("hint").textContent = "Note: Web Bluetooth needs a secure origin. Serve this page over HTTPS (e.g. GitHub Pages) or via localhost.";
+}
+</script>
+</body>
+</html>

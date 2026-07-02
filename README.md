@@ -127,10 +127,31 @@ once a phone connects, the board's IP address.
    reconnect Bluetooth to start a fresh 5-minute window.
 
 > **Opening the page directly.** A generic BLE app displays the `http://<ip>`
-> value so you can tap/copy it. For true one-tap open, a small companion app or
-> a [Web Bluetooth](https://developer.mozilla.org/docs/Web/API/Web_Bluetooth_API)
-> page (Chrome on Android) can read the characteristic and follow the link — the
-> device-side prerequisite (the characteristic) is already in place.
+> value so you can tap/copy it. For a true **one-tap open**, use the included
+> Web Bluetooth page — see below.
+
+---
+
+## One-tap open (Web Bluetooth)
+
+`docs/index.html` is a small companion page that connects to the board over
+Bluetooth, reads the IP characteristic, and **redirects straight to the LED
+control page** — so you never type an IP.
+
+**Host it (once):** enable **GitHub Pages** for this repo (Settings → Pages →
+*Deploy from a branch* → pick your branch, folder `/docs`). Your page is then at  
+`https://<user>.github.io/Nano-33-IoT-with-FastLED-BLE-and-Wifi/`  
+(Web Bluetooth requires HTTPS, which Pages provides. `file://` on a desktop or
+`localhost` also work for testing.)
+
+**Use it:** open that URL, tap **Connect & open**, pick **NanoLED** in the
+browser's device picker — the page waits for the board to join WiFi, then opens
+`http://<ip>` automatically.
+
+> **Browser support:** Chrome/Edge on **Android** and desktop. **iOS is not
+> supported** (Safari/Chrome on iOS lack Web Bluetooth; the *Bluefy* app is a
+> workaround). The [Web Bluetooth API](https://developer.mozilla.org/docs/Web/API/Web_Bluetooth_API)
+> also needs the page served from a secure origin (HTTPS/localhost).
 
 ---
 
@@ -163,9 +184,11 @@ where a short key (`r`) must **not** be matched inside a longer one (`br`).
 │   └── ParamParser/               # Pure, host-testable query-string parser
 │       ├── param_parser.h
 │       └── param_parser.cpp
-└── test/
-    └── test_param_parser/         # Unity unit tests (env: native)
-        └── test_param_parser.cpp
+├── test/
+│   └── test_param_parser/         # Unity unit tests (env: native)
+│       └── test_param_parser.cpp
+└── docs/
+    └── index.html                 # Web Bluetooth one-tap-open page (GitHub Pages)
 ```
 
 ---
