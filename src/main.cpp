@@ -77,7 +77,13 @@ BLEService ledService(BLE_SERVICE_UUID);
 // Read + notify characteristic holding the web UI URL ("http://<ip>"), pushed
 // to the phone when WiFi comes up so it can open the page without the serial log.
 BLEStringCharacteristic ipCharacteristic(BLE_IP_CHAR_UUID, BLERead | BLENotify, 32);
-bool bleWasConnected = false;     // for BLE connect/disconnect edge detection
+
+// Set by the BLE event handlers (fired from BLE.poll()) and consumed in loop().
+// Event handlers are used instead of polling central.connected(), which is an
+// unreliable way to detect disconnects (ArduinoBLE issue #334) and previously
+// left the board un-advertised after the first disconnect.
+bool bleConnectEvent = false;
+bool bleDisconnectEvent = false;
 
 // ─── LED helpers ───────────────────────────────────────────
 void applyLeds() {
@@ -199,6 +205,20 @@ void stopWifi() {
     Serial.println(F("WiFi stopped."));
 }
 
+// ─── BLE event handlers ────────────────────────────────────
+// Called synchronously from BLE.poll(); keep them light and let loop() act.
+void onBLEConnected(BLEDevice central) {
+    Serial.print(F("BLE connected: "));
+    Serial.println(central.address());
+    bleConnectEvent = true;
+}
+
+void onBLEDisconnected(BLEDevice central) {
+    Serial.print(F("BLE disconnected: "));
+    Serial.println(central.address());
+    bleDisconnectEvent = true;
+}
+
 // ─── Setup / Loop ──────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
@@ -223,34 +243,37 @@ void setup() {
     BLE.setAdvertisedService(ledService);
     BLE.addService(ledService);
     ipCharacteristic.writeValue("off");   // no URL until WiFi comes up
+    BLE.setEventHandler(BLEConnected, onBLEConnected);
+    BLE.setEventHandler(BLEDisconnected, onBLEDisconnected);
     BLE.advertise();
     Serial.println(F("BLE advertising as \"" BLE_DEVICE_NAME "\""));
     Serial.println(F("Connect a phone over BLE to activate the web UI."));
 }
 
 void loop() {
-    // Service the BLE stack and read the current connection state.
+    // poll() dispatches the BLE connect/disconnect event handlers above.
     BLE.poll();
-    BLEDevice central = BLE.central();
-    bool bleConnected = central && central.connected();
 
-    // Rising edge: a phone just connected → start the WiFi window (or, if WiFi
-    // is already up, refresh it to a fresh WIFI_ON_SECONDS).
-    if (bleConnected && !bleWasConnected) {
-        Serial.print(F("BLE connected: "));
-        Serial.println(central.address());
+    // A phone just connected → start the WiFi window (or, if WiFi is already up,
+    // refresh it to a fresh WIFI_ON_SECONDS).
+    if (bleConnectEvent) {
+        bleConnectEvent = false;
         if (!wifiActive) startWifi();
         if (wifiActive) {
             wifiDeadline = millis() + (unsigned long)WIFI_ON_SECONDS * 1000UL;
         }
     }
-    // Falling edge: the phone disconnected. WiFi deliberately keeps running for
-    // the rest of the countdown; just resume advertising for the next phone.
-    if (!bleConnected && bleWasConnected) {
-        Serial.println(F("BLE disconnected – WiFi stays up until the countdown ends."));
-        BLE.advertise();
+
+    // A phone disconnected → resume advertising so the board is discoverable
+    // again. WiFi deliberately keeps running until the countdown ends.
+    if (bleDisconnectEvent) {
+        bleDisconnectEvent = false;
+        if (BLE.advertise()) {
+            Serial.println(F("Re-advertising – board is discoverable again."));
+        } else {
+            Serial.println(F("WARNING: BLE.advertise() failed after disconnect."));
+        }
     }
-    bleWasConnected = bleConnected;
 
     // WiFi lifetime is governed solely by the countdown, independent of BLE.
     if (wifiActive) {
