@@ -81,6 +81,15 @@ void test_null_inputs(void) {
     TEST_ASSERT_EQUAL_INT(-1, parseParam("GET /set?w=1 HTTP/1.1", NULL));
 }
 
+// The on/off switch relies on "on=0" returning 0 (not -1): a value of 0 must be
+// distinguishable from "key absent", otherwise the light could never be turned off.
+void test_on_off_switch(void) {
+    TEST_ASSERT_EQUAL_INT(0, parseParam("GET /set?on=0 HTTP/1.1", "on"));
+    TEST_ASSERT_EQUAL_INT(1, parseParam("GET /set?on=1 HTTP/1.1", "on"));
+    TEST_ASSERT_EQUAL_INT(1, parseParam("GET /set?on=1&br=200 HTTP/1.1", "on"));
+    TEST_ASSERT_EQUAL_INT(-1, parseParam("GET /set?br=200 HTTP/1.1", "on"));
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_single_param);
@@ -93,5 +102,6 @@ int main(int, char **) {
     RUN_TEST(test_boundary_values);
     RUN_TEST(test_requires_delimiter);
     RUN_TEST(test_null_inputs);
+    RUN_TEST(test_on_off_switch);
     return UNITY_END();
 }
