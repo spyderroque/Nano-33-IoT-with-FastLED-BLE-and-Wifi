@@ -1,23 +1,28 @@
 /*
  * Nano 33 IoT – SK6812 RGBW LED Controller (WiFi only, low power)
  *
+ * LED driver: Adafruit_NeoPixel.
+ *   SK6812 RGBW is supported natively — no emulation, no colour-order tricks:
+ *     • White mode → strip.Color(0, 0, 0, w): drives ONLY the physical W LED.
+ *     • Color mode → strip.Color(r, g, b, 0): drives the RGB LEDs, W off.
+ *   The NEO_GRBW flag (config.h) tells the library the wire order; Color() is
+ *   always logical (r, g, b, w), so there is nothing to reorder by hand.
+ *
  * Behaviour:
- *   • Connects to WiFi at boot and stays permanently connected. If the link
- *     drops (router reboot, power loss, range) it reconnects automatically.
- *   • Serves a minimal web UI on port 80: a Power on/off switch, White / Color
- *     modes, and a Brightness slider.
- *   • No Bluetooth. Dropping BLE removes the NINA WiFi+BLE coexistence limits
- *     entirely and needs no special module firmware.
+ *   • Connects to WiFi at boot and stays permanently connected; reconnects by
+ *     itself after a power loss / router reboot.
+ *   • Web UI on port 80: Power on/off switch, White / Color modes, Brightness.
+ *   • No Bluetooth — no NINA WiFi/BLE coexistence limits, no special firmware.
  *
  * Power notes:
- *   • WiFi.lowPowerMode() puts the NINA radio in beacon power-save while staying
- *     associated — the biggest idle-power saving on this board.
- *   • "Off" drives every LED to black, so the strip draws only quiescent current.
- *   • The Arduino core (millis/Serial/…) is pulled in by FastLED/WiFiNINA and is
- *     unavoidable when using those libraries; there is no explicit <Arduino.h>.
- *     Request handling uses a fixed char buffer instead of String (no heap).
+ *   • WiFi.lowPowerMode() puts the NINA radio in beacon power-save while online.
+ *   • "Off" writes every LED to 0, so the strip drops to quiescent current.
+ *   • No explicit <Arduino.h>; the core is pulled in by the libraries. Request
+ *     handling uses a fixed char buffer instead of String (no heap).
  *
  * Wiring:  SK6812 DIN → pin 6,  VCC → 5 V supply,  GND → common GND.
+ *   NOTE: the Nano 33 IoT drives DIN at 3.3 V. If colours glitch, add a 3.3→5 V
+ *   level shifter on DIN (see README) — that is hardware, not code.
  *
  * Build (PlatformIO):
  *   pio run -e nano_33_iot -t upload   # build + flash
@@ -25,16 +30,16 @@
  *   pio test -e native                 # host unit tests (parser)
  */
 
-#include <FastLED.h>
+#include <Adafruit_NeoPixel.h>       // native RGBW; defines NEO_GRBW / NEO_KHZ800
 #include <WiFiNINA.h>
-#include <string.h>            // strstr, strncmp — C stdlib, no Arduino String
+#include <string.h>                  // strstr, strncmp — C stdlib, no Arduino String
 
 #include "config.h"
 #include "web_ui.h"
 #include "param_parser.h"
 
-// ─── LED state ─────────────────────────────────────────────
-CRGB leds[NUM_LEDS];
+// ─── LEDs ──────────────────────────────────────────────────
+Adafruit_NeoPixel strip(NUM_LEDS, LED_DATA_PIN, LED_PIXEL_TYPE);
 
 struct State {
   bool    on         = POWER_ON_AT_BOOT;   // master on/off switch
@@ -54,17 +59,19 @@ static inline uint8_t clamp8(int v) {
 }
 
 void applyLeds() {
-    CRGB color;
+    uint32_t c;
     if (!state.on) {
-        color = CRGB::Black;                       // off → LEDs draw ~quiescent
+        c = 0;                                          // off → all channels 0
     } else if (state.whiteOnly) {
-        color = CRGB(state.w, state.w, state.w);   // equal RGB → W channel
+        c = strip.Color(0, 0, 0, state.w);              // physical white LED only
     } else {
-        color = CRGB(state.r, state.g, state.b);
+        c = strip.Color(state.r, state.g, state.b, 0);  // RGB LEDs, white off
     }
-    fill_solid(leds, NUM_LEDS, color);
-    FastLED.setBrightness(state.brightness);
-    FastLED.show();
+    strip.setBrightness(state.brightness);
+    for (uint16_t i = 0; i < NUM_LEDS; i++) {
+        strip.setPixelColor(i, c);
+    }
+    strip.show();
 }
 
 // ─── HTTP ──────────────────────────────────────────────────
@@ -162,8 +169,7 @@ bool ensureWifi() {
 void setup() {
     Serial.begin(115200);
 
-    FastLED.addLeds<LED_TYPE, LED_DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS)
-           .setRgbw(Rgbw(kRGBWDefaultColorTemp, kRGBWExactColors, W3));
+    strip.begin();
     applyLeds();                 // show the boot state (POWER_ON_AT_BOOT)
 
     ensureWifi();

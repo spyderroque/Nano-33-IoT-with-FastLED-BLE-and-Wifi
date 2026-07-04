@@ -6,8 +6,10 @@ after a power loss or router reboot, and the web UI has a **Power on/off switch*
 plus White / Color modes and a Brightness slider.
 
 No Bluetooth — which also means **no NINA firmware juggling** and no WiFi/BLE
-coexistence limits. Built with **[PlatformIO](https://platformio.org/)**; the
-request parser is unit-tested on the host.
+coexistence limits. LEDs are driven by **Adafruit_NeoPixel**, which supports
+SK6812 RGBW natively (real W channel). Built with
+**[PlatformIO](https://platformio.org/)**; the request parser is unit-tested on
+the host.
 
 ---
 
@@ -20,7 +22,7 @@ request parser is unit-tested on the host.
 | **Auto-reconnect** | Rejoins the network automatically after a power loss / router reboot |
 | **White mode** | Drives the SK6812 **dedicated W LED** only – the truest white |
 | **Colour mode** | Individual R / G / B sliders |
-| **Brightness** | Global FastLED brightness across all channels |
+| **Brightness** | Global brightness across all four channels |
 | **Low power** | NINA WiFi power-save mode; lean, `String`-free request handling |
 
 ---
@@ -35,7 +37,9 @@ request parser is unit-tested on the host.
 
 > **SK6812 RGBW** Each package contains three RGB LEDs **plus** a fourth warm-white LED driven by the W byte. White mode uses only the W channel for the most natural, efficient white.
 
-> **FastLED RGBW** FastLED ≥ 3.7 supports SK6812 natively. The sketch uses a `CRGB` array and `.setRgbw(Rgbw(kRGBWDefaultColorTemp, kRGBWExactColors, W3))`; `kRGBWExactColors` moves `min(R,G,B)` to the physical white LED.
+> **Native RGBW via NeoPixel** The strip is declared `NEO_GRBW` and colours are set with `strip.Color(r, g, b, w)` — a real 4-channel call. White mode is simply `Color(0, 0, 0, w)` (only the physical white LED); colour mode is `Color(r, g, b, 0)`. No emulation, no `min(R,G,B)` extraction, no manual byte reordering.
+
+> **⚠️ 3.3 V data / level shifting** The Nano 33 IoT drives DIN at **3.3 V**, but SK6812 LEDs powered at 5 V often want ≥ ~3.5 V for a reliable logic "1". Flicker, wrong/random colours, or only the first LEDs lighting are usually caused by this — and it is **hardware, not the sketch**. Fixes: add a 3.3 → 5 V level shifter (e.g. **74AHCT125 / 74HCT245**) on the DIN line; or power the strip at ~4.3–4.5 V so 3.3 V clears the threshold; or use a "sacrificial" first pixel as a level shifter. Keep the data lead short and share a common ground.
 
 ---
 
@@ -53,7 +57,7 @@ This build is deliberately lean:
 
 > **About `Arduino.h`:** it isn't `#include`d explicitly, but the Arduino core
 > (`millis`, `Serial`, the SPI/GPIO used to reach the NINA and drive the LEDs)
-> is pulled in by FastLED/WiFiNINA and **cannot be avoided** while using those
+> is pulled in by NeoPixel/WiFiNINA and **cannot be avoided** while using those
 > libraries — removing the include line wouldn't change what gets linked. Truly
 > bare-metal would mean reimplementing the NINA WiFi protocol and the SK6812
 > timing by hand. The real savings above are where the power actually goes.
@@ -79,8 +83,8 @@ git clone https://github.com/spyderroque/Nano-33-IoT-with-FastLED-BLE-and-Wifi.g
 cd Nano-33-IoT-with-FastLED-BLE-and-Wifi
 ```
 
-FastLED and WiFiNINA (in `platformio.ini` → `lib_deps`) download automatically
-on the first build.
+Adafruit NeoPixel and WiFiNINA (in `platformio.ini` → `lib_deps`) download
+automatically on the first build.
 
 ### 3. Configure
 
@@ -159,7 +163,8 @@ Declared in `platformio.ini`, fetched automatically:
 
 | Library | Constraint |
 |---|---|
-| FastLED | `^3.7.0` (native RGBW `setRgbw` support) |
+| Adafruit NeoPixel | `^1.12.0` (native SK6812 RGBW) |
 | WiFiNINA | `^2.1.0` |
 
-No ArduinoBLE and no special NINA firmware are required for this WiFi-only build.
+No FastLED, no ArduinoBLE, and no special NINA firmware are required for this
+WiFi-only build.
